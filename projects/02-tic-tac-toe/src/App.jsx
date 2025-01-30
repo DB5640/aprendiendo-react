@@ -7,18 +7,51 @@ import { checkWinnerFrom } from "./logic/board";
 
 
 function App() {
-  const [board, setBoard] = useState(Array(9).fill(null))
-  const [turn, setTurn] = useState(TURNS.X)
+
+  const socket = new WebSocket('ws://localhost:8081');
+  socket.onopen = () => {
+    console.log('Conectado al servidor WebSocket');
+  };
+
+  socket.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+  
+    if (data.type === 'state') {
+      // Inicializar el estado del tablero
+      setBoard(data.gameState);
+    } else if (data.type === 'move') {
+      // Actualizar el estado del juego
+      setBoard(data.gameState);
+    }
+  };
+
+  const [board, setBoard] = useState(() => {
+    const boardFromLocalStorage = window.localStorage.getItem('board')
+    return boardFromLocalStorage ? JSON.parse(boardFromLocalStorage) : Array(9).fill(null)
+  })
+  const [turn, setTurn] = useState(
+    () => {
+      const turnFromStorage = window.localStorage.getItem('turn')
+      return turnFromStorage ?? TURNS.X
+    }
+  )
   const [winner, setWinner] = useState(null) //null no hay ganadory false empate
 
   const resetGame = () => {
     setBoard(Array(9).fill(null))
     setTurn(TURNS.X)
     setWinner(null)
+    window.localStorage.removeItem('board')
+    window.localStorage.removeItem('turn')
   }
 
   const checkEndgame = (newBoard) => {
     return newBoard.every(square => square !== null)
+  }
+
+  const guardarPartida = (newBoard, newTurn) => {
+    window.localStorage.setItem('board', JSON.stringify(newBoard))
+    window.localStorage.setItem('turn', newTurn)
   }
 
   const updateBoard = (index) => {
@@ -26,9 +59,13 @@ function App() {
     const newBoard = [...board]
     newBoard[index] = turn
     setBoard(newBoard)
-
+    //Luego de setear el nuevo board lo envío al socket para que el otro  jugador lo reciba
+    socket.send(JSON.stringify({ type: 'move', index, player: turn }));
     const newTurn = turn === TURNS.X ? TURNS.O : TURNS.X
     setTurn(newTurn)
+
+    guardarPartida(newBoard, newTurn)
+
     const newWinner = checkWinnerFrom(newBoard)
     if (newWinner) {
       confetti()
